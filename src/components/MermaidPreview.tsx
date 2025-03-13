@@ -26,12 +26,14 @@ declare global {
 const MermaidPreview = ({ code }: MermaidPreviewProps) => {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const previewRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     // Load Mermaid script if not already loaded
     if (!window.mermaid) {
+      setIsLoading(true);
       const script = document.createElement("script");
       script.src = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js";
       script.async = true;
@@ -41,6 +43,7 @@ const MermaidPreview = ({ code }: MermaidPreviewProps) => {
           theme: "default",
           securityLevel: "loose",
         });
+        setIsLoading(false);
         renderDiagram();
       };
       document.body.appendChild(script);
@@ -48,23 +51,39 @@ const MermaidPreview = ({ code }: MermaidPreviewProps) => {
         document.body.removeChild(script);
       };
     } else {
+      setIsLoading(false);
       renderDiagram();
     }
-  }, [code]);
+  }, []);
+
+  // Separate effect for code changes
+  useEffect(() => {
+    if (!isLoading && window.mermaid) {
+      renderDiagram();
+    }
+  }, [code, isLoading]);
 
   const renderDiagram = () => {
-    if (!window.mermaid || !code.trim()) return;
+    if (!window.mermaid || !code.trim() || !previewRef.current) return;
 
     try {
-      const id = "mermaid-diagram";
+      // Clear previous content
+      if (previewRef.current) {
+        previewRef.current.innerHTML = '';
+      }
+
+      const id = `mermaid-${Date.now()}`;
+      const tempDiv = document.createElement('div');
+      tempDiv.id = id;
+      previewRef.current.appendChild(tempDiv);
+
       window.mermaid.render(
         id,
         code,
         (svgCode) => {
           setSvg(svgCode);
           setError(null);
-        },
-        previewRef.current
+        }
       );
     } catch (err) {
       console.error("Mermaid rendering error:", err);
@@ -107,7 +126,11 @@ const MermaidPreview = ({ code }: MermaidPreviewProps) => {
         </Button>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col">
-        {error ? (
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            Loading Mermaid renderer...
+          </div>
+        ) : error ? (
           <div className="flex-1 flex items-center justify-center text-destructive text-sm p-4 border border-destructive/20 rounded-md bg-destructive/10">
             {error}
           </div>
@@ -115,7 +138,6 @@ const MermaidPreview = ({ code }: MermaidPreviewProps) => {
           <div 
             ref={previewRef}
             className="flex-1 flex items-center justify-center overflow-auto p-4 bg-white rounded-md"
-            dangerouslySetInnerHTML={{ __html: svg || "" }}
           />
         )}
       </CardContent>
